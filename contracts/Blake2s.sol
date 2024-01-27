@@ -1,14 +1,29 @@
 pragma solidity 0.8.20;
 
-import "hardhat/console.sol";
-
-/*
-    see https://www.rfc-editor.org/rfc/rfc7693.txt
-    */
+/**
+ * @title Blake2s Hash Function for Solidity
+ * @notice This library implements the BLAKE2s cryptographic hash function within Solidity.
+ *         BLAKE2s is optimized for 8- to 32-bit platforms and produces digests of any size
+ *         between 1 and 32 bytes. For more details, see the BLAKE2 RFC at
+ *         https://www.rfc-editor.org/rfc/rfc7693.txt.
+ */
 library Blake2s {
-    uint32 constant DEFAULT_OUTLEN = 32;
-    bytes constant DEFAULT_EMPTY_KEY = "";
+    uint32 private constant DEFAULT_OUTLEN = 32;
+    bytes private constant DEFAULT_EMPTY_KEY = "";
 
+    // Initialization Vector constants as defined in the BLAKE2 RFC
+    uint32 private constant IV0 = 0x6A09E667;
+    uint32 private constant IV1 = 0xBB67AE85;
+    uint32 private constant IV2 = 0x3C6EF372;
+    uint32 private constant IV3 = 0xA54FF53A;
+    uint32 private constant IV4 = 0x510E527F;
+    uint32 private constant IV5 = 0x9B05688C;
+    uint32 private constant IV6 = 0x1F83D9AB;
+    uint32 private constant IV7 = 0x5BE0CD19;
+
+    /**
+     * @dev BLAKE2s context struct containing all necessary fields for the hash computation.
+     */
     struct BLAKE2s_ctx {
         uint256[2] b; // Input buffer: 2 elements of 32 bytes each to make up 64 bytes
         uint32[8] h; // Chained state: 8 words of 32 bits each
@@ -17,10 +32,19 @@ library Blake2s {
         uint32 outlen; // Digest output size
     }
 
+    /**
+     * @dev Converts a bytes input to a fixed-size 32-byte blake2s-hash.
+     * @param input The input data to hash.
+     * @return result The resulting 32-byte hash.
+     */
     function toBytes32(
         bytes memory input
     ) public pure returns (bytes32 result) {
         uint32[8] memory digest = toDigest(input);
+
+        // Loop through each 32-bit word in the digest array and construct a single bytes32 result.
+        // This is done by shifting each 32-bit word to its correct position in the 256-bit result
+        // and combining them using the bitwise OR operation.
         for (uint i = 0; i < digest.length; i++) {
             result = bytes32(
                 uint256(result) | (uint256(digest[i]) << (256 - ((i + 1) * 32)))
@@ -28,12 +52,18 @@ library Blake2s {
         }
     }
 
+    /**
+     * @dev Computes the BLAKE2s hash of the input and returns the digest.
+     * @param input The input data to hash.
+     * @return The 32-byte hash digest.
+     */
     function toDigest(
         bytes memory input
     ) public pure returns (uint32[8] memory) {
         BLAKE2s_ctx memory ctx;
         uint32[8] memory out;
         uint32[2] memory DEFAULT_EMPTY_INPUT;
+        //Custom Keys or Output Size are not supported yet, primarily because they are not tested. However they can be added in the future
         init(
             ctx,
             DEFAULT_OUTLEN,
@@ -46,6 +76,14 @@ library Blake2s {
         return out;
     }
 
+    /**
+     * @dev Initializes the BLAKE2s context with the given parameters.
+     * @param ctx The BLAKE2s context to initialize.
+     * @param outlen The desired output length of the hash.
+     * @param key The key input for keyed hashing (up to 32 bytes).
+     * @param salt The salt input for randomizing the hash (exactly 2 uint32s).
+     * @param person The personalization input for personalizing the hash (exactly 2 uint32s).
+     */
     function init(
         BLAKE2s_ctx memory ctx,
         uint32 outlen,
@@ -56,9 +94,15 @@ library Blake2s {
         if (outlen == 0 || outlen > 32 || key.length > 32) revert("outlen");
 
         // Initialize chained-state to IV
-        for (uint i = 0; i < 8; i++) {
-            ctx.h[i] = IV()[i];
-        }
+        //I think it's more gas efficient to assign the values directly to the array instead of assigning them one by one
+        ctx.h[0] = IV0;
+        ctx.h[1] = IV1;
+        ctx.h[2] = IV2;
+        ctx.h[3] = IV3;
+        ctx.h[4] = IV4;
+        ctx.h[5] = IV5;
+        ctx.h[6] = IV6;
+        ctx.h[7] = IV7;
 
         // Set up parameter block
         ctx.h[0] = ctx.h[0] ^ 0x01010000 ^ (uint32(key.length) << 8) ^ outlen;
@@ -76,6 +120,11 @@ library Blake2s {
         ctx.outlen = outlen;
     }
 
+    /**
+     * @dev Updates the BLAKE2s context with new input data.
+     * @param ctx The BLAKE2s context to update.
+     * @param input The input data to be added to the hash computation.
+     */
     function update(BLAKE2s_ctx memory ctx, bytes memory input) private pure {
         for (uint i = 0; i < input.length; i++) {
             // If buffer is full, update byte counters and compress
@@ -108,6 +157,16 @@ library Blake2s {
         }
     }
 
+    /**
+     * @dev Compresses the BLAKE2s context's internal state with the input buffer.
+     * @param ctx The BLAKE2s context containing the state and input buffer.
+     * @param last Indicates if this is the last block to compress, setting the finalization flag.
+     *
+     * The function performs the BLAKE2s compression function, which mixes both the input buffer
+     * and the state (chained value) together using the BLAKE2s mixing function 'G'. It updates
+     * the internal state with the result of the compression. If 'last' is true, it also performs
+     * the necessary operations to finalize the hash, such as inverting the finalization flag.
+     */
     function compress(BLAKE2s_ctx memory ctx, bool last) private pure {
         uint32[16] memory v;
         uint32[16] memory m;
@@ -115,8 +174,16 @@ library Blake2s {
         // Initialize v[0..15]
         for (uint i = 0; i < 8; i++) {
             v[i] = ctx.h[i]; // First half from the state
-            v[i + 8] = IV()[i]; // Second half from the IV
         }
+        // Second half from the IV
+        v[8] = IV0;
+        v[9] = IV1;
+        v[10] = IV2;
+        v[11] = IV3;
+        v[12] = IV4;
+        v[13] = IV5;
+        v[14] = IV6;
+        v[15] = IV7;
 
         // Low 64 bits of t
         v[12] = v[12] ^ uint32(ctx.t & 0xFFFFFFFF);
@@ -131,16 +198,20 @@ library Blake2s {
         // Initialize m[0..15] with the bytes from the input buffer
         for (uint i = 0; i < 16; i++) {
             //input buffer ctx b is 2x32 bytes long; To fill the 16 words of m from the 64 bytes of ctx.b, We copt the first 8 byte from the first 32 bytes of ctx.b and the second 8 bytes from the second 32 bytes of ctx.b
-            uint256 bufferSlice = ctx.b[i / 8];
             //Execution would be reverting due to overflow caused by modulo 256, hence its unchecked
+
+            //The code in the comment below is the same as the code in the unchecked block but more readable
+            // uint256 bufferSlice = ctx.b[i / 8];
+            // uint offset = (256 - (((i + 1) * 32))) % 256;
+            // uint32 currentWord = uint32(bufferSlice >> offset);
             unchecked {
-                uint offset = (256 - (((i + 1) * 32))) % 256;
-                uint32 currentWord = uint32(bufferSlice >> offset);
-                m[i] = getWords32(currentWord);
+                m[i] = getWords32(
+                    uint32(ctx.b[i / 8] >> (256 - (((i + 1) * 32))) % 256)
+                );
             }
         }
 
-        // Mix the message block according to the BLAKE2s schedule
+        // SIGMA Block according to rfc7693
         uint8[16][10] memory SIGMA = [
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
             [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
@@ -154,6 +225,7 @@ library Blake2s {
             [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0]
         ];
 
+        //call G function 10 times
         for (uint round = 0; round < 10; round++) {
             G(v, 0, 4, 8, 12, m[SIGMA[round][0]], m[SIGMA[round][1]]);
             G(v, 1, 5, 9, 13, m[SIGMA[round][2]], m[SIGMA[round][3]]);
@@ -171,6 +243,19 @@ library Blake2s {
         }
     }
 
+    /**
+     * @dev Finalizes the hashing process and produces the final hash output.
+     * @param ctx The BLAKE2s context that contains the state to be finalized.
+     * @param out The array that will receive the final hash output.
+     *
+     * This function completes the BLAKE2s hash computation by performing the following steps:
+     * 1. It adds any remaining unprocessed bytes in the buffer to the total byte count.
+     * 2. It calls the compress function one last time with the finalization flag set to true.
+     * 3. It converts the internal state from little-endian to big-endian format and stores
+     *    the result in the output array.
+     * 4. If the desired output length is not a multiple of 4 bytes, it properly pads the final
+     *    word in the output array to match the specified output length.
+     */
     function finalize(
         BLAKE2s_ctx memory ctx,
         uint32[8] memory out
@@ -193,6 +278,11 @@ library Blake2s {
         }
     }
 
+    /**
+     * @dev Converts a 32-bit word from little-endian to big-endian format.
+     * @param a The 32-bit word in little-endian format.
+     * @return b The 32-bit word in big-endian format.
+     */
     function getWords32(uint32 a) private pure returns (uint32 b) {
         return
             (a >> 24) |
@@ -201,10 +291,19 @@ library Blake2s {
             (a << 24);
     }
 
-    function ROTR32(uint32 x, uint8 n) private pure returns (uint32) {
-        return (x >> n) | (x << (32 - n));
-    }
-
+    /**
+     * @dev Performs the BLAKE2s mixing function 'G' as defined in the BLAKE2 specification.
+     * @param v The working vector which is being mixed.
+     * @param a Index of the first element in the working vector to mix.
+     * @param b Index of the second element in the working vector to mix.
+     * @param c Index of the third element in the working vector to mix.
+     * @param d Index of the fourth element in the working vector to mix.
+     * @param x The first input word to the mixing function.
+     * @param y The second input word to the mixing function.
+     *
+     * This function updates the working vector 'v' with the results of the mixing operations.
+     * It is a core part of the compression function, which is in turn a core part of the BLAKE2s hash function.
+     */
     function G(
         uint32[16] memory v,
         uint a,
@@ -226,16 +325,17 @@ library Blake2s {
         }
     }
 
-    function IV() private pure returns (uint32[8] memory) {
-        return [
-            0x6A09E667,
-            0xBB67AE85,
-            0x3C6EF372,
-            0xA54FF53A,
-            0x510E527F,
-            0x9B05688C,
-            0x1F83D9AB,
-            0x5BE0CD19
-        ];
+    /**
+     * @dev Performs right rotation on a 32-bit word.
+     * @param x The 32-bit word to be rotated.
+     * @param n The number of bits to rotate by.
+     * @return The rotated 32-bit word.
+     *
+     * Right rotation is a bitwise operation that shifts all bits of a word to the right by a certain number of bits.
+     * Bits that are shifted off the end are wrapped around to the beginning. This is used in the G function as part
+     * of the mixing process.
+     */
+    function ROTR32(uint32 x, uint8 n) private pure returns (uint32) {
+        return (x >> n) | (x << (32 - n));
     }
 }
