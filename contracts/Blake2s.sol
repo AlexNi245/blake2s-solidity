@@ -83,9 +83,11 @@ library Blake2s {
                 // BLAKE2s block size is 64 bytes
                 ctx.t += ctx.c; // Increment counter t by the number of bytes in the buffer
                 compress(ctx, false);
+
                 //clear input buffer counter after compressing
                 ctx.b[0] = 0;
                 ctx.b[1] = 0;
+                //clear buffer counter after compressing
                 ctx.c = 0;
             }
 

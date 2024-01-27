@@ -22,16 +22,6 @@ describe("Blake2s", function () {
     });
 
 
-    it("should return the right hash", async () => {
-        const input = "hello worl,d";
-        const expected = crypto.createHash('blake2s256').update(input).digest();
-        const res = await testContract.hash(toUtf8Bytes(input))
-        console.log("res", res)
-
-
-    })
-
-
     it("small digest", async () => {
         const input = "hello world";
 
