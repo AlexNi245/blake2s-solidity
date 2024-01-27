@@ -1,12 +1,10 @@
 pragma solidity 0.8.20;
 
-import "hardhat/console.sol";
-
 contract Blake2s {
     /*
     see https://www.rfc-editor.org/rfc/rfc7693.txt
     */ uint32[8]
-        public IV = [
+        private IV = [
         0x6A09E667,
         0xBB67AE85,
         0x3C6EF372,
@@ -17,16 +15,8 @@ contract Blake2s {
         0x5BE0CD19
     ];
 
-    uint32 constant MASK_0 = 0xFF000000;
-    uint32 constant MASK_1 = 0x00FF0000;
-    uint32 constant MASK_2 = 0x0000FF00;
-    uint32 constant MASK_3 = 0x000000FF;
-
-    uint32 constant SHIFT_0 = 24;
-    uint32 constant SHIFT_1 = 16;
-    uint32 constant SHIFT_2 = 8;
-
     uint32 constant DEFAULT_OUTLEN = 32;
+    bytes constant DEFAULT_EMPTY_KEY = "";
 
     struct BLAKE2s_ctx {
         uint256[2] b; // Input buffer: 2 elements of 32 bytes each to make up 64 bytes
@@ -39,36 +29,29 @@ contract Blake2s {
     function blake2s(
         bytes memory input
     ) public view returns (uint32[8] memory) {
-        return blake2s(input, "", "", "", DEFAULT_OUTLEN);
-    }
-
-    function blake2s(
-        bytes memory input,
-        bytes memory key,
-        bytes memory salt,
-        bytes memory personalization,
-        uint32 outlen
-    ) public view returns (uint32[8] memory) {
         BLAKE2s_ctx memory ctx;
         uint32[8] memory out;
-        init(ctx, outlen, key, formatInput(salt), formatInput(personalization));
+        uint32[2] memory DEFAULT_EMPTY_INPUT;
+
+        init(
+            ctx,
+            DEFAULT_OUTLEN,
+            DEFAULT_EMPTY_KEY,
+            DEFAULT_EMPTY_INPUT,
+            DEFAULT_EMPTY_INPUT
+        );
         update(ctx, input);
         finalize(ctx, out);
         return out;
     }
 
-    function blake2sFormatted(
+    function blake2sToBytes32(
         bytes memory input
-    ) public view returns (bytes32) {
-        return uint32ArrayToBytes32(blake2s(input, "", "", "", DEFAULT_OUTLEN));
-    }
-
-    function uint32ArrayToBytes32(
-        uint32[8] memory input
-    ) internal pure returns (bytes32 result) {
-        for (uint i = 0; i < input.length; i++) {
+    ) public view returns (bytes32 result) {
+        uint32[8] memory digest = blake2s(input);
+        for (uint i = 0; i < digest.length; i++) {
             result = bytes32(
-                uint256(result) | (uint256(input[i]) << (256 - ((i + 1) * 32)))
+                uint256(result) | (uint256(digest[i]) << (256 - ((i + 1) * 32)))
             );
         }
     }
@@ -79,7 +62,7 @@ contract Blake2s {
         bytes memory key,
         uint32[2] memory salt,
         uint32[2] memory person
-    ) internal view {
+    ) private view {
         if (outlen == 0 || outlen > 32 || key.length > 32) revert("outlen");
 
         // Initialize chained-state to IV
@@ -101,30 +84,19 @@ contract Blake2s {
         }
 
         ctx.outlen = outlen;
-
-        // Run hash once with key as input if the key is provided
-        if (key.length > 0) {
-            // Padding the key to block size (64 bytes)
-            bytes memory paddedKey = new bytes(64);
-            for (uint i = 0; i < key.length; i++) {
-                paddedKey[i] = key[i];
-            }
-
-            update(ctx, paddedKey);
-            ctx.c = 64; // BLAKE2s block size is 64 bytes
-        }
     }
 
-    function update(BLAKE2s_ctx memory ctx, bytes memory input) internal view {
+    function update(BLAKE2s_ctx memory ctx, bytes memory input) private view {
         for (uint i = 0; i < input.length; i++) {
             // If buffer is full, update byte counters and compress
             if (ctx.c == 64) {
                 // BLAKE2s block size is 64 bytes
                 ctx.t += ctx.c; // Increment counter t by the number of bytes in the buffer
                 compress(ctx, false);
+                // Reset input buffer counter after compressing
                 ctx.b[0] = 0;
                 ctx.b[1] = 0;
-                ctx.c = 0; // Reset buffer counter after compressing
+                ctx.c = 0;
             }
             //Update temporary counter c
             uint c = ctx.c++;
@@ -133,18 +105,13 @@ contract Blake2s {
             uint[2] memory b = ctx.b;
             uint8 a = uint8(input[i]);
 
-            // uint pointer;
-            //uint offset;
             assembly {
                 mstore8(add(b, c), a)
-                // pointer := mload(add(b, c))
             }
-            // console.log("pointer: %s", pointer);
-            // console.log("offset: %s", offset);
         }
     }
 
-    function compress(BLAKE2s_ctx memory ctx, bool last) internal view {
+    function compress(BLAKE2s_ctx memory ctx, bool last) private view {
         uint32[16] memory v;
         uint32[16] memory m;
 
@@ -165,17 +132,16 @@ contract Blake2s {
         }
 
         for (uint i = 0; i < 16; i++) {
-            uint256 slice = ctx.b[i / 8];
+            uint256 bufferSlice = ctx.b[i / 8];
             unchecked {
                 uint offset = (256 - (((i + 1) * 32))) % 256;
-                uint32 currentByte = uint32(slice >> offset);
+                uint32 currentByte = uint32(bufferSlice >> offset);
                 m[i] = getWords32(currentByte);
             }
         }
 
-       
-
-        uint8[16][10] memory sigma = [
+        // Mix the message block according to the BLAKE2s schedule
+        uint8[16][10] memory SIGMA = [
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
             [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
             [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
@@ -188,17 +154,15 @@ contract Blake2s {
             [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0]
         ];
 
-        // Mix the message block according to the BLAKE2s schedule
-
         for (uint round = 0; round < 10; round++) {
-            G(v, 0, 4, 8, 12, m[sigma[round][0]], m[sigma[round][1]]);
-            G(v, 1, 5, 9, 13, m[sigma[round][2]], m[sigma[round][3]]);
-            G(v, 2, 6, 10, 14, m[sigma[round][4]], m[sigma[round][5]]);
-            G(v, 3, 7, 11, 15, m[sigma[round][6]], m[sigma[round][7]]);
-            G(v, 0, 5, 10, 15, m[sigma[round][8]], m[sigma[round][9]]);
-            G(v, 1, 6, 11, 12, m[sigma[round][10]], m[sigma[round][11]]);
-            G(v, 2, 7, 8, 13, m[sigma[round][12]], m[sigma[round][13]]);
-            G(v, 3, 4, 9, 14, m[sigma[round][14]], m[sigma[round][15]]);
+            G(v, 0, 4, 8, 12, m[SIGMA[round][0]], m[SIGMA[round][1]]);
+            G(v, 1, 5, 9, 13, m[SIGMA[round][2]], m[SIGMA[round][3]]);
+            G(v, 2, 6, 10, 14, m[SIGMA[round][4]], m[SIGMA[round][5]]);
+            G(v, 3, 7, 11, 15, m[SIGMA[round][6]], m[SIGMA[round][7]]);
+            G(v, 0, 5, 10, 15, m[SIGMA[round][8]], m[SIGMA[round][9]]);
+            G(v, 1, 6, 11, 12, m[SIGMA[round][10]], m[SIGMA[round][11]]);
+            G(v, 2, 7, 8, 13, m[SIGMA[round][12]], m[SIGMA[round][13]]);
+            G(v, 3, 4, 9, 14, m[SIGMA[round][14]], m[SIGMA[round][15]]);
         }
 
         // Update the state with the result of the G mixing operations
@@ -223,15 +187,13 @@ contract Blake2s {
         }
         // Properly pad output if it doesn't fill a full word
         if (ctx.outlen % 4 != 0) {
-            out[ctx.outlen / 4] = shift_right32(
-                getWords32(ctx.h[ctx.outlen / 4]),
-                32 - 8 * (ctx.outlen % 4)
-            );
+            out[ctx.outlen / 4] =
+                getWords32(ctx.h[ctx.outlen / 4]) >>
+                (32 - 8 * (ctx.outlen % 4));
         }
     }
 
-    // Helper function to flip endianness of 32-bit words
-    function getWords32(uint32 a) internal pure returns (uint32 b) {
+    function getWords32(uint32 a) private pure returns (uint32 b) {
         return
             (a >> 24) |
             ((a >> 8) & 0x0000FF00) |
@@ -239,35 +201,7 @@ contract Blake2s {
             (a << 24);
     }
 
-    // Helper function to u right a 32-bit word
-    function shift_right32(
-        uint32 a,
-        uint shift
-    ) internal pure returns (uint32) {
-        return a >> shift;
-    }
-
-    function formatInput(
-        bytes memory input
-    ) internal pure returns (uint32[2] memory output) {
-        require(input.length <= 8, "Input too long");
-        for (uint i = 0; i < input.length; i++) {
-            output[i / 4] ^= (uint32(uint8(input[i])) << (24 - 8 * (i % 4)));
-        }
-        output[0] = flipEndian(output[0]);
-        output[1] = flipEndian(output[1]);
-    }
-
-    // Helper function to flip endianness of 32-bit words
-    function flipEndian(uint32 input) internal pure returns (uint32) {
-        return
-            ((input & 0xFF000000) >> 24) |
-            ((input & 0x00FF0000) >> 8) |
-            ((input & 0x0000FF00) << 8) |
-            ((input & 0x000000FF) << 24);
-    }
-
-    function ROTR32(uint32 x, uint8 n) internal pure returns (uint32) {
+    function ROTR32(uint32 x, uint8 n) private pure returns (uint32) {
         return (x >> n) | (x << (32 - n));
     }
 
@@ -279,7 +213,7 @@ contract Blake2s {
         uint d,
         uint32 x,
         uint32 y
-    ) internal pure {
+    ) private pure {
         unchecked {
             v[a] = v[a] + v[b] + x;
             v[d] = ROTR32(v[d] ^ v[a], 16);
@@ -289,47 +223,6 @@ contract Blake2s {
             v[d] = ROTR32(v[d] ^ v[a], 8);
             v[c] = v[c] + v[d];
             v[b] = ROTR32(v[b] ^ v[c], 7);
-        }
-    }
-
-    function dumpState(BLAKE2s_ctx memory ctx) public view {
-        // Dump the input buffer
-        for (uint i = 0; i < ctx.b.length; i++) {
-            console.log("b[%d]: %s", i, uint256(ctx.b[i]));
-        }
-
-        // Dump the chained state
-        for (uint i = 0; i < ctx.h.length; i++) {
-            console.log("h[%d]: %s", i, uint32(ctx.h[i]));
-        }
-
-        // Dump the total number of bytes
-        console.log("t: %s", uint64(ctx.t));
-
-        // Dump the counter for buffer
-        console.log("c: %s", uint32(ctx.c));
-
-        // Dump the digest output size
-        console.log("outlen: %s", uint32(ctx.outlen));
-    }
-
-    function dumpH(uint32[8] memory h) public view {
-        for (uint i = 0; i < h.length; i++) {
-            console.log("h[%d]: %s", i, h[i]);
-        }
-    }
-
-    // ... rest of your contract ...
-
-    function dumpVM(uint32[16] memory v, uint32[16] memory m) public view {
-        // Dump the v array
-        for (uint i = 0; i < v.length; i++) {
-            console.log("v[%d]: %s", i, v[i]);
-        }
-
-        // Dump the m array
-        for (uint i = 0; i < m.length; i++) {
-            console.log("m[%d]: %s", i, m[i]);
         }
     }
 }
