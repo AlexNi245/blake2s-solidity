@@ -21,8 +21,17 @@ To use this repository, clone it to your local machine and follow the instructio
 ## Usage
 
 ```solidity
+pragma solidity 0.8.20;
 
-bytes memory message = new bytes ("foo");
-Blake2s
+import {Blake2s} from "blake2s-solidity/contracts/Blake2s.sol";
+
+contract MyContract {
+    function hash() public pure returns (bytes32) {
+        bytes memory input = "foo";
+        bytes32 hash = Blake2s.toBytes32(input);
+        //0x08d6cad88075de8f192db097573d0e829411cd91eb6ec65e8fc16c017edfdb74
+        return hash;
+    }
+}
 
 ```
