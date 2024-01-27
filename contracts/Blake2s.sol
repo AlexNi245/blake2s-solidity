@@ -122,6 +122,8 @@ contract Blake2s {
                 // BLAKE2s block size is 64 bytes
                 ctx.t += ctx.c; // Increment counter t by the number of bytes in the buffer
                 compress(ctx, false);
+                ctx.b[0] = 0;
+                ctx.b[1] = 0;
                 ctx.c = 0; // Reset buffer counter after compressing
             }
             //Update temporary counter c
@@ -170,6 +172,8 @@ contract Blake2s {
                 m[i] = getWords32(currentByte);
             }
         }
+
+       
 
         uint8[16][10] memory sigma = [
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
