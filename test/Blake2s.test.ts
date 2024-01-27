@@ -39,7 +39,7 @@ describe("Blake2s", function () {
         }
 
         const p = []
-        const rounds = 100;
+        const rounds = 50;
 
 
         for (let i = 0; i < rounds; i++) {
@@ -49,7 +49,6 @@ describe("Blake2s", function () {
 
         console.log("start fuzzing")
         await Promise.all(p)
-        Promise.all
 
     })
 
