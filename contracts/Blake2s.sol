@@ -1,20 +1,9 @@
 pragma solidity 0.8.20;
 
-contract Blake2s {
-    /*
+/*
     see https://www.rfc-editor.org/rfc/rfc7693.txt
-    */ uint32[8]
-        private IV = [
-        0x6A09E667,
-        0xBB67AE85,
-        0x3C6EF372,
-        0xA54FF53A,
-        0x510E527F,
-        0x9B05688C,
-        0x1F83D9AB,
-        0x5BE0CD19
-    ];
-
+    */
+library Blake2s {
     uint32 constant DEFAULT_OUTLEN = 32;
     bytes constant DEFAULT_EMPTY_KEY = "";
 
@@ -26,9 +15,20 @@ contract Blake2s {
         uint32 outlen; // Digest output size
     }
 
+    function blake2sToBytes32(
+        bytes memory input
+    ) public pure returns (bytes32 result) {
+        uint32[8] memory digest = blake2s(input);
+        for (uint i = 0; i < digest.length; i++) {
+            result = bytes32(
+                uint256(result) | (uint256(digest[i]) << (256 - ((i + 1) * 32)))
+            );
+        }
+    }
+
     function blake2s(
         bytes memory input
-    ) public view returns (uint32[8] memory) {
+    ) public pure returns (uint32[8] memory) {
         BLAKE2s_ctx memory ctx;
         uint32[8] memory out;
         uint32[2] memory DEFAULT_EMPTY_INPUT;
@@ -45,29 +45,18 @@ contract Blake2s {
         return out;
     }
 
-    function blake2sToBytes32(
-        bytes memory input
-    ) public view returns (bytes32 result) {
-        uint32[8] memory digest = blake2s(input);
-        for (uint i = 0; i < digest.length; i++) {
-            result = bytes32(
-                uint256(result) | (uint256(digest[i]) << (256 - ((i + 1) * 32)))
-            );
-        }
-    }
-
     function init(
         BLAKE2s_ctx memory ctx,
         uint32 outlen,
         bytes memory key,
         uint32[2] memory salt,
         uint32[2] memory person
-    ) private view {
+    ) private pure {
         if (outlen == 0 || outlen > 32 || key.length > 32) revert("outlen");
 
         // Initialize chained-state to IV
         for (uint i = 0; i < 8; i++) {
-            ctx.h[i] = IV[i];
+            ctx.h[i] = IV()[i];
         }
 
         // Set up parameter block
@@ -86,7 +75,7 @@ contract Blake2s {
         ctx.outlen = outlen;
     }
 
-    function update(BLAKE2s_ctx memory ctx, bytes memory input) private view {
+    function update(BLAKE2s_ctx memory ctx, bytes memory input) private pure {
         for (uint i = 0; i < input.length; i++) {
             // If buffer is full, update byte counters and compress
             if (ctx.c == 64) {
@@ -111,14 +100,14 @@ contract Blake2s {
         }
     }
 
-    function compress(BLAKE2s_ctx memory ctx, bool last) private view {
+    function compress(BLAKE2s_ctx memory ctx, bool last) private pure {
         uint32[16] memory v;
         uint32[16] memory m;
 
         // Initialize v[0..15]
         for (uint i = 0; i < 8; i++) {
             v[i] = ctx.h[i]; // First half from the state
-            v[i + 8] = IV[i]; // Second half from the IV
+            v[i + 8] = IV()[i]; // Second half from the IV
         }
 
         // Low 64 bits of t
@@ -174,7 +163,7 @@ contract Blake2s {
     function finalize(
         BLAKE2s_ctx memory ctx,
         uint32[8] memory out
-    ) internal view {
+    ) internal pure {
         // Add any uncounted bytes
         ctx.t += ctx.c;
 
@@ -224,5 +213,18 @@ contract Blake2s {
             v[c] = v[c] + v[d];
             v[b] = ROTR32(v[b] ^ v[c], 7);
         }
+    }
+
+    function IV() private pure returns (uint32[8] memory) {
+        return [
+            0x6A09E667,
+            0xBB67AE85,
+            0x3C6EF372,
+            0xA54FF53A,
+            0x510E527F,
+            0x9B05688C,
+            0x1F83D9AB,
+            0x5BE0CD19
+        ];
     }
 }
