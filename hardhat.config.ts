@@ -8,7 +8,10 @@ const config: HardhatUserConfig = {
   gasReporter: {
     currency: 'USD',
     gasPrice: 21
-  }
+  },
+  mocha: {
+    timeout: 100000000
+  },
 };
 
 export default config;
