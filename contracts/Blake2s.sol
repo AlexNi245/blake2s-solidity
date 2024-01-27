@@ -1,5 +1,7 @@
 pragma solidity 0.8.20;
 
+import "hardhat/console.sol";
+
 /*
     see https://www.rfc-editor.org/rfc/rfc7693.txt
     */
@@ -81,21 +83,26 @@ library Blake2s {
                 // BLAKE2s block size is 64 bytes
                 ctx.t += ctx.c; // Increment counter t by the number of bytes in the buffer
                 compress(ctx, false);
-                // Reset input buffer counter after compressing
+                //clear input buffer counter after compressing
                 ctx.b[0] = 0;
                 ctx.b[1] = 0;
                 ctx.c = 0;
             }
-            //Update temporary counter c
-            uint c = ctx.c++;
 
-            // b -> ctx.b
-            uint[2] memory b = ctx.b;
-            uint8 a = uint8(input[i]);
-
+            //Assign the char from input to the buffer
+            //Assembly function corrospends to the following code
+            //  uint c = ctx.c;
+            //  uint[2] memory b = ctx.b;
+            //  uint8 a = uint8(input[i]);
+            //  b[c] =a;F
             assembly {
-                mstore8(add(b, c), a)
+                mstore8(
+                    add(mload(add(ctx, 0)), mload(add(ctx, 0x60))),
+                    shr(248, mload(add(input, add(0x20, i))))
+                )
             }
+            //After we assign the char to the buffer, we need to increment the buffer count
+            ctx.c++;
         }
     }
 
