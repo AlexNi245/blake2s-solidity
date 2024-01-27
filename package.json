@@ -1,6 +1,6 @@
 {
   "name": "blake2s-solidity",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Blake2s hash function for Solidity",
   "author": "Alex Plutta - alex.plutta@googlemail.com",
   "license": "MIT",
@@ -8,6 +8,7 @@
     "test": "hardhat test",
     "build": "yarn hardhat compile &&  yarn hardhat typechain && yarn tsc -p tsconfig-build.json"
   },
+  "repository": "https://github.com/AlexNi245/blake2s-solidity",
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
     "@nomicfoundation/hardhat-ethers": "^3.0.5",
