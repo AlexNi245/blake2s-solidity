@@ -6,18 +6,9 @@ import { ethers } from "hardhat";
 
 describe("Blake2s", function () {
     let blake2s: any;
-    let testContract: any;
-
     beforeEach(async function () {
-
         const f = await ethers.getContractFactory("Blake2s")
         blake2s = await f.deploy();
-
-        const tf = await ethers.getContractFactory("TestContract", {
-       
-
-        })
-        testContract = await tf.deploy();
 
     });
 
