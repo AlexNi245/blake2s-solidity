@@ -1,9 +1,8 @@
 
 import { expect } from "chai";
 import crypto from 'crypto';
-import { Contract, JsonRpcProvider, toUtf8Bytes } from "ethers";
+import { toUtf8Bytes } from "ethers";
 import { ethers } from "hardhat";
-import { Blake2s } from "../typechain-types";
 
 describe("Blake2s", function () {
     let blake2s: any;

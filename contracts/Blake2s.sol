@@ -32,7 +32,6 @@ library Blake2s {
         BLAKE2s_ctx memory ctx;
         uint32[8] memory out;
         uint32[2] memory DEFAULT_EMPTY_INPUT;
-
         init(
             ctx,
             DEFAULT_OUTLEN,
