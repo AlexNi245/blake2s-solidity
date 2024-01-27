@@ -15,10 +15,10 @@ library Blake2s {
         uint32 outlen; // Digest output size
     }
 
-    function blake2sToBytes32(
+    function toBytes32(
         bytes memory input
     ) public pure returns (bytes32 result) {
-        uint32[8] memory digest = blake2s(input);
+        uint32[8] memory digest = toDigest(input);
         for (uint i = 0; i < digest.length; i++) {
             result = bytes32(
                 uint256(result) | (uint256(digest[i]) << (256 - ((i + 1) * 32)))
@@ -26,7 +26,7 @@ library Blake2s {
         }
     }
 
-    function blake2s(
+    function toDigest(
         bytes memory input
     ) public pure returns (uint32[8] memory) {
         BLAKE2s_ctx memory ctx;
@@ -120,12 +120,15 @@ library Blake2s {
             v[14] = ~v[14];
         }
 
+        // Initialize m[0..15] with the bytes from the input buffer
         for (uint i = 0; i < 16; i++) {
+            //input buffer ctx b is 2x32 bytes long; To fill the 16 words of m from the 64 bytes of ctx.b, We copt the first 8 byte from the first 32 bytes of ctx.b and the second 8 bytes from the second 32 bytes of ctx.b
             uint256 bufferSlice = ctx.b[i / 8];
+            //Execution would be reverting due to overflow caused by modulo 256, hence its unchecked
             unchecked {
                 uint offset = (256 - (((i + 1) * 32))) % 256;
-                uint32 currentByte = uint32(bufferSlice >> offset);
-                m[i] = getWords32(currentByte);
+                uint32 currentWord = uint32(bufferSlice >> offset);
+                m[i] = getWords32(currentWord);
             }
         }
 
